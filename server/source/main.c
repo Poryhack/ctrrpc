@@ -116,6 +116,21 @@ typedef struct {
 
 cmd_t resp;
 
+extern Handle gspGpuHandle;
+
+Result GSPGPU_ResetGpuCore(Handle* handle)
+{
+    if(!handle)handle=&gspGpuHandle;
+    
+    u32* cmdbuf=getThreadCommandBuffer();
+    cmdbuf[0]=0x001B0000; //request header code
+
+    Result ret=0;
+    if((ret=svcSendSyncRequest(*handle)))return ret;
+    
+    return cmdbuf[1];
+}
+
 int execute_cmd(int sock, cmd_t* cmd) {
     memset(&resp, 0, sizeof(resp));
 
@@ -268,6 +283,16 @@ int execute_cmd(int sock, cmd_t* cmd) {
         break;
     }
 
+    case 17: { // reset gpu !
+        GSPGPU_ResetGpuCore(NULL);
+        break;
+    }
+
+    case 18: { // poll gsp events
+        int i;for(i=0;i<GSPEVENT_MAX;i++)resp.args[i]=gspEventCounts[i];
+        break;
+    }
+
     default:
         return 0xDEAD; // unknown cmd
     }
@@ -293,6 +318,7 @@ void conn_main() {
         print(&bot, "ret: %08x\n", ret);
         print(&bot, "last_cmd: %02x\n", last_cmd & 0xFF);
         int i;for(i=0;i<GSPEVENT_MAX;i++)print(&bot, "%d : %08X\n", i, gspEventCounts[i]);
+        for(i=0;i<8;i++)print(&bot, "    %08X %08X %08X %08X\n", gpuCmd[i*4+0], gpuCmd[i*4+1], gpuCmd[i*4+2], gpuCmd[i*4+3]);
 
         if(!first) {
             u32 bytes_read = 0;
@@ -372,9 +398,7 @@ int main(int argc, char *argv[])
     //they *have* to be on the linear heap
     gpuCmdSize=0x40000;
     gpuCmd=(u32*)linearAlloc(gpuCmdSize*4);
-
-    //actually reset the GPU
-    GPU_Reset(NULL, gpuCmd, gpuCmdSize);
+    GPUCMD_SetBuffer(gpuCmd, gpuCmdSize, 0);
 
     svcCreateEvent(&new_cmd_event, 0);
     svcCreateEvent(&cmd_done_event, 0);

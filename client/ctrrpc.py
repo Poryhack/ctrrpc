@@ -31,13 +31,11 @@ class ctrrpc:
     # Send request.
     def c(self, cmd, args):
         args = list(args)
-        if len(args) > 7:
-            raise Exception('max len(args) == 7')
-        while len(args) != 7:
-            args.append(0)
-        self.s.send(struct.pack('<BBBBIIIIIII', cmd,0,0,0,
-                           args[0],args[1],args[2],args[3],
-                           args[4],args[5],args[6]))
+        buf=struct.pack('<BBBB',cmd,len(args),0,0)
+        for v in args:
+            buf+=struct.pack('<I',v)
+        self.s.send(buf)
+
         r = self.s.recv(32)
 
         if self.debug:
@@ -139,6 +137,26 @@ class ctrrpc:
         self.c(12, (1,))
     def disable_drawing(self):
         self.c(12, (0,))
+
+    # send gpu cmd
+    def gpucmd(self, header, params):
+        r = self.c(13, (header,)+params)
+    # run gpu cmd
+    def rungpu(self):
+        r = self.c(14, (0,))
+    # empty gpu cmdbuf
+    def emptygpu(self):
+        r = self.c(15, (0,))
+    # soft reset
+    def softresetgpu(self):
+        r = self.c(16, (0,))
+    # hard reset
+    def hardresetgpu(self):
+        r = self.c(17, (0,))
+    # poll gsp events
+    def pollgsp(self):
+        r = self.c(18, (0,))
+        print(["%08X"%(ord(r[k])|(ord(r[k+1])<<8)|(ord(r[k+2])<<16)|(ord(r[k+3])<<24)) for k in range(4,len(r),4)])
 
     def __del__(self):
         self.s.send(struct.pack('<BBBBIIIIIII', 0,0,0,0,0,0,0,0,0,0,0))
