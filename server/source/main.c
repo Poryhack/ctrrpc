@@ -25,6 +25,9 @@
 
 extern u32 gspEventCounts[];
 
+u32 gpuCmdSize=0x40000;
+u32* gpuCmd;
+
 typedef struct
 {
     char   console[2048];
@@ -245,6 +248,26 @@ int execute_cmd(int sock, cmd_t* cmd) {
         break;
     }
 
+    case 13: { // add gpu cmd
+        GPUCMD_Add(cmd->args[0], &cmd->args[1], cmd->numarg-1);
+        break;
+    }
+
+    case 14: { // run gpu cmdbuf
+        GPUCMD_FlushAndRun(NULL);
+        break;
+    }
+
+    case 15: { // empty gpu cmdbuf
+        GPUCMD_SetBuffer(gpuCmd, gpuCmdSize, 0);
+        break;
+    }
+
+    case 16: { // "reset" gpu
+        GPU_Reset(NULL, gpuCmd, gpuCmdSize);
+        break;
+    }
+
     default:
         return 0xDEAD; // unknown cmd
     }
@@ -344,6 +367,14 @@ int main(int argc, char *argv[])
     gfxInit();
     hidInit(NULL);
     fsInit();
+
+    //allocate our GPU command buffers
+    //they *have* to be on the linear heap
+    gpuCmdSize=0x40000;
+    gpuCmd=(u32*)linearAlloc(gpuCmdSize*4);
+
+    //actually reset the GPU
+    GPU_Reset(NULL, gpuCmd, gpuCmdSize);
 
     svcCreateEvent(&new_cmd_event, 0);
     svcCreateEvent(&cmd_done_event, 0);
