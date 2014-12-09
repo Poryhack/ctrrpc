@@ -15,12 +15,15 @@
 #include <fcntl.h>
 #include <errno.h>
 
-
 #include "gfx.h"
 
 #define PORT 8334
 #define MAX_LINES ((240-8)/8)
 #define __swap16(v) ((((v) & 0xFF) << 8) | ((v) >> 8))
+
+#define MAX_ARGS (512)
+
+extern u32 gspEventCounts[];
 
 typedef struct
 {
@@ -103,14 +106,17 @@ int enable_draw = 1;
 
 typedef struct {
     u8 type;
-    u8 tmp[3];
-    u32 args[7];
+    u8 numarg;
+    u8 tmp[2];
+    u32 args[MAX_ARGS];
 } cmd_t;
 
 cmd_t resp;
 
 int execute_cmd(int sock, cmd_t* cmd) {
     memset(&resp, 0, sizeof(resp));
+
+    resp.numarg=7;
 
     switch(cmd->type) {
     case 0: // exit
@@ -263,12 +269,22 @@ void conn_main() {
         print(&bot, "frame: %08x\n", it);
         print(&bot, "ret: %08x\n", ret);
         print(&bot, "last_cmd: %02x\n", last_cmd & 0xFF);
+        int i;for(i=0;i<GSPEVENT_MAX;i++)print(&bot, "%d : %08X\n", i, gspEventCounts[i]);
 
         if(!first) {
             u32 bytes_read = 0;
 
             while(1) {
-                ret = recv(sock, &cmd, sizeof(cmd), 0);
+                ret = recv(sock, &cmd, 4, 0);
+                if(ret < 0) {
+                    if(ret == -EWOULDBLOCK)
+                        continue;
+                    break;
+                }
+
+                if(!cmd.numarg)cmd.numarg=7;
+                u32 size=cmd.numarg*4;
+                ret = recv(sock, &cmd.args, size, 0);
                 if(ret < 0) {
                     if(ret == -EWOULDBLOCK)
                         continue;
@@ -276,12 +292,13 @@ void conn_main() {
                 }
 
                 bytes_read += ret;
-                if(bytes_read == sizeof(cmd)) {
+                if(bytes_read == size) {
                     svcSignalEvent(new_cmd_event);
                     svcWaitSynchronization(cmd_done_event, U64_MAX);
                     svcClearEvent(cmd_done_event);
 
-                    send(sock, &resp, sizeof(resp), 0);
+                    size=4+4*resp.numarg;
+                    send(sock, &resp, size, 0);
 
                     if(last_cmd_result == 0xDEAD)
                         exiting = 1;
